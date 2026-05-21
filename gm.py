@@ -1,5 +1,7 @@
 from flask import Flask, jsonify, request, render_template_string
 from flask_cors import CORS 
+import os
+import tempfile
 import ee 
 import datetime
 import math
@@ -27,15 +29,43 @@ def maskS2clouds(img):
                         ["system:time_start"]
                 )
     # ================= CẤU HÌNH GOOGLE EARTH ENGINE =================
-PROJECT_ID = 'baitap-470705'
+PROJECT_ID = os.environ.get("GEE_PROJECT_ID", "baitap-470705")
+
+SERVICE_ACCOUNT = os.environ.get(
+    "GEE_SERVICE_ACCOUNT",
+    "trunghieu123@baitap-470705.iam.gserviceaccount.com"
+)
+
+PRIVATE_KEY_JSON = os.environ.get("GEE_PRIVATE_KEY_JSON")
 
 try:
-        ee.Initialize(project=PROJECT_ID)
-        print("✅ GEE CONNECTED")
+    if PRIVATE_KEY_JSON:
+        key_path = os.path.join(
+            tempfile.gettempdir(),
+            "gee-private-key.json"
+        )
+
+        with open(key_path, "w", encoding="utf-8") as f:
+            f.write(PRIVATE_KEY_JSON)
+
+        credentials = ee.ServiceAccountCredentials(
+            SERVICE_ACCOUNT,
+            key_path
+        )
+
+        ee.Initialize(
+            credentials,
+            project=PROJECT_ID
+        )
+
+    else:
+        raise Exception("Thiếu biến môi trường GEE_PRIVATE_KEY_JSON trên Render")
+
+    print("✅ GEE CONNECTED")
+
 except Exception as e:
-        print("🔄 Đang xác thực...")
-        ee.Authenticate()
-        ee.Initialize(project=PROJECT_ID)
+    print("❌ GEE CONNECT ERROR:", e)
+    raise
 
 app = Flask(__name__)
 CORS(app)
