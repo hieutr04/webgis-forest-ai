@@ -1,8 +1,6 @@
 from flask import Flask, jsonify, request, render_template_string
 from flask_cors import CORS 
 import ee 
-import os
-import tempfile
 import datetime
 import math
 import numpy as np
@@ -29,70 +27,15 @@ def maskS2clouds(img):
                         ["system:time_start"]
                 )
     # ================= CẤU HÌNH GOOGLE EARTH ENGINE =================
-PROJECT_ID = os.environ.get("GEE_PROJECT_ID", "baitap-470705")
-
-# Email service account của Google Cloud
-# Local: đặt file JSON cùng thư mục với gm.py
-# Render/Host: dùng biến môi trường GEE_SERVICE_ACCOUNT và GEE_PRIVATE_KEY_JSON
-SERVICE_ACCOUNT = os.environ.get(
-    "GEE_SERVICE_ACCOUNT",
-    "trunghieu123@baitap-470705.iam.gserviceaccount.com"
-)
-
-LOCAL_KEY_FILE = os.environ.get(
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    "baitap-470705-dc3f958b5325.json"
-)
-
-PRIVATE_KEY_JSON = os.environ.get(
-    "GEE_PRIVATE_KEY_JSON"
-)
+PROJECT_ID = 'baitap-470705'
 
 try:
-    if PRIVATE_KEY_JSON:
-        key_path = os.path.join(
-            tempfile.gettempdir(),
-            "gee-private-key.json"
-        )
-
-        with open(
-            key_path,
-            "w",
-            encoding="utf-8"
-        ) as f:
-            f.write(PRIVATE_KEY_JSON)
-
-        credentials = ee.ServiceAccountCredentials(
-            SERVICE_ACCOUNT,
-            key_path
-        )
-
-        ee.Initialize(
-            credentials,
-            project=PROJECT_ID
-        )
-
-    elif os.path.exists(LOCAL_KEY_FILE):
-        credentials = ee.ServiceAccountCredentials(
-            SERVICE_ACCOUNT,
-            LOCAL_KEY_FILE
-        )
-
-        ee.Initialize(
-            credentials,
-            project=PROJECT_ID
-        )
-
-    else:
-        ee.Initialize(
-            project=PROJECT_ID
-        )
-
-    print("✅ GEE CONNECTED")
-
+        ee.Initialize(project=PROJECT_ID)
+        print("✅ GEE CONNECTED")
 except Exception as e:
-    print("❌ GEE CONNECT ERROR:", e)
-    raise
+        print("🔄 Đang xác thực...")
+        ee.Authenticate()
+        ee.Initialize(project=PROJECT_ID)
 
 app = Flask(__name__)
 CORS(app)
@@ -105,10 +48,15 @@ HTML = """
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>ForestGuard Pro v3.5 - Dashboard Phân Tích</title>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        />
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+        <script
+            src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+        </script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
             :root { 
@@ -693,10 +641,23 @@ var charts={};
         attributionControl:false
         }
         ).setView([15.5,108],6);
-
-        L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        const baseLayer = L.tileLayer(
+            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            {
+                maxZoom:19,
+                attribution:'&copy; OpenStreetMap contributors'
+            }
         ).addTo(map);
+
+        baseLayer.on(
+            "tileerror",
+            function(e){
+                console.error(
+                    "Lỗi tải bản đồ nền:",
+                    e
+                );
+            }
+        );
         window.addEventListener(
 
         'resize',
@@ -716,51 +677,14 @@ var charts={};
             data.forEach(c => select.add(new Option(c, c)));
         });
 
-function fetchProvinces() {
-    const country = document.getElementById("country").value;
-    const container = document.getElementById("province-container");
+        function fetchProvinces() {
+            const country = document.getElementById("country").value;
+            const container = document.getElementById("province-container");
 
-    if(provinceBoundaryLayer){
-        map.removeLayer(provinceBoundaryLayer);
-        provinceBoundaryLayer = null;
-    }
-
-    container.innerHTML = "<div class='text-white-50 small p-2'>Đang tải danh sách tỉnh...</div>";
-
-    fetch(`/api/provinces?country=${encodeURIComponent(country)}`)
-    .then(r => r.json())
-    .then(data => {
-        container.innerHTML = "";
-
-        data.provinces.forEach(p => {
-            const safeId = "p-" + p.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "");
-
-            container.innerHTML += `
-            <div class='province-row'>
-                <input
-                    class='form-check-input province-check'
-                    type='checkbox'
-                    name='province'
-                    value='${p}'
-                    id='${safeId}'
-                    onchange="zoomToProvince(this)"
-                >
-
-                <label
-                    class='form-check-label province-label'
-                    for='${safeId}'
-                >
-                    <span>${p}</span>
-                    <small>Zoom ranh giới</small>
-                </label>
-            </div>`;
-        });
-    })
-    .catch(err => {
-        console.log(err);
-        container.innerHTML = "<div class='text-danger small p-2'>Không tải được danh sách tỉnh</div>";
-    });
-}
+            if(provinceBoundaryLayer){
+                map.removeLayer(provinceBoundaryLayer);
+                provinceBoundaryLayer = null;
+            }
 
             container.innerHTML = "<div class='text-white-50 small p-2'>Đang tải danh sách tỉnh...</div>";
 
@@ -958,14 +882,9 @@ function fetchProvinces() {
 
     )
 
-.then(async r => {
-    if(!r.ok){
-        const text = await r.text();
-        console.error("API analyze lỗi:", text);
-        throw new Error("API analyze lỗi " + r.status);
-    }
-    return r.json();
-})
+    .then(
+        r=>r.json()
+    )
 
     .then(data=>{
 
@@ -2189,18 +2108,8 @@ def pixel_history():
     })
 
 if __name__ == '__main__':
-    port = int(
-        os.environ.get(
-            "PORT",
-            5001
-        )
-    )
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False
-    )
+        # Chạy trên port 5001
+        app.run(debug=True, port=5001)
 
 
 
