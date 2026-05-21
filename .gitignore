@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+private-key.json
+baitap-470705-dc3f958b5325.json
+*.json
+.venv/
+tfenv/
